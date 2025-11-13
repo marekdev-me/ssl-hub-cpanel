@@ -133,7 +133,18 @@ func main() {
 	tab := form.Get("tab")
 	action := form.Get("action")
 
-	h(`<style>body{font-family:system-ui,Segoe UI,Arial;margin:24px}nav a{margin-right:12px}</style>`)
+	h(`<style>body{font-family:system-ui,Segoe UI,Arial;margin:24px}` +
+		`nav a{margin-right:12px}` +
+		`.provider-grid{display:flex;flex-wrap:wrap;gap:16px;margin:16px 0}` +
+		`.provider-card{flex:1 1 260px;border:1px solid #d0d7de;border-radius:8px;padding:16px;box-shadow:0 1px 2px rgba(15,23,42,.08)}` +
+		`.provider-card h4{margin:0 0 8px;font-size:18px}` +
+		`.provider-card p{margin:0 0 12px;color:#334155;font-size:14px}` +
+		`.provider-card small{display:block;margin-top:4px;color:#64748b}` +
+		`.provider-actions form{margin:0 0 8px}` +
+		`.provider-actions button,.provider-actions a.button{display:inline-block;background:#1d4ed8;color:#fff;border:none;border-radius:4px;padding:6px 12px;font-size:14px;text-decoration:none;cursor:pointer}` +
+		`.provider-actions a.button{background:#0f172a}` +
+		`.provider-actions .secondary{background:#475569}` +
+		`</style>`)
 	h(`<h2>SSL Hub</h2><nav>` +
 		`<a href="?tab=autossl">AutoSSL (Let’s Encrypt)</a>` +
 		`<a href="?tab=zerossl">ZeroSSL AutoSSL</a>` +
@@ -145,6 +156,14 @@ func main() {
 	}
 
 	switch action {
+	case "autossl_enable_cpanel":
+		out, err := safeRun("/usr/local/cpanel/bin/whmapi1", "set_autossl_provider", "provider=cPanel")
+		if err != nil {
+			h(`<pre>ERROR:\n` + esc(out) + `</pre>`)
+			return
+		}
+		h(`<pre>` + esc(out) + `</pre>`)
+		return
 	case "autossl_enable_le":
 		// Accept LE TOS checkbox gate from UI
 		tos := form.Get("tos")
@@ -254,15 +273,56 @@ func main() {
 		return
 	}
 	// default AutoSSL tab
-	h(`<h3>AutoSSL (Let’s Encrypt)</h3>`)
-	h(`<form method="post" style="margin-bottom:12px">` +
-		`<label><input type="checkbox" name="tos"/> I agree to the Let’s Encrypt Terms of Service</label>` +
+	kid, hmac, err := loadEAB()
+	h(`<h3>AutoSSL Providers</h3>`)
+	h(`<div class="provider-grid">`)
+	h(`<div class="provider-card">` +
+		`<h4>cPanel (powered by Sectigo)</h4>` +
+		`<p>The default AutoSSL provider included with WHM.</p>` +
+		`<div class="provider-actions">` +
+		`<form method="post">` +
+		`<input type="hidden" name="action" value="autossl_enable_cpanel"/>` +
+		`<button class="secondary">Enable cPanel provider</button>` +
+		`</form>` +
+		`</div>` +
+		`</div>`)
+
+	h(`<div class="provider-card">` +
+		`<h4>Let’s Encrypt</h4>` +
+		`<p>Issue certificates from Let’s Encrypt via the official AutoSSL provider.</p>` +
+		`<div class="provider-actions">` +
+		`<form method="post">` +
+		`<label style="display:block;margin-bottom:6px"><input type="checkbox" name="tos"/> I agree to the Let’s Encrypt Terms of Service</label>` +
 		`<input type="hidden" name="action" value="autossl_enable_le"/>` +
-		`<div style="margin-top:8px"><button>Enable Let’s Encrypt provider</button></div>` +
-		`</form>`)
+		`<button>Enable Let’s Encrypt provider</button>` +
+		`</form>` +
+		`</div>` +
+		`</div>`)
+
+	h(`<div class="provider-card">` +
+		`<h4>ZeroSSL (via SSL Hub)</h4>`)
+	switch {
+	case err != nil:
+		h(`<p style="color:#b91c1c">Unable to read stored ZeroSSL credentials: ` + esc(err.Error()) + `.</p>`)
+	case len(kid) == 0 || len(hmac) == 0:
+		h(`<p>ZeroSSL External Account Binding credentials are not saved yet. Configure them before enabling ZeroSSL.</p>`)
+	default:
+		h(`<p>Ready to issue certificates with ZeroSSL. Stored EAB KID ` + esc(maskSecret(kid)) + ` and HMAC ` + esc(maskSecret(hmac)) + `.</p>`)
+	}
+	h(`<div class="provider-actions">`)
+	if err == nil && len(kid) > 0 && len(hmac) > 0 {
+		h(`<form method="post">` +
+			`<input type="hidden" name="action" value="zerossl_run_all"/>` +
+			`<button>Run ZeroSSL AutoSSL now</button>` +
+			`</form>`)
+	}
+	h(`<a class="button" href="?tab=zerossl">Manage ZeroSSL provider</a>` +
+		`</div>` +
+		`</div>`)
+	h(`</div>`)
 
 	h(`<form method="post">` +
 		`<input type="hidden" name="action" value="autossl_run_all"/>` +
-		`<button>Run AutoSSL for all users</button>` +
+		`<button>Run active AutoSSL provider for all users</button>` +
 		`</form>`)
 }
