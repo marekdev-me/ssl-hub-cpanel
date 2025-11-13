@@ -146,7 +146,7 @@ func main() {
 		`.provider-actions .secondary{background:#475569}` +
 		`</style>`)
 	h(`<h2>SSL Hub</h2><nav>` +
-		`<a href="?tab=autossl">AutoSSL Providers</a>` +
+		`<a href="?tab=autossl">AutoSSL (Let’s Encrypt)</a>` +
 		`<a href="?tab=zerossl">ZeroSSL AutoSSL</a>` +
 		`</nav><hr/>`)
 
