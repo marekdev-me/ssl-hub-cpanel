@@ -48,6 +48,57 @@ func parseForm() (url.Values, error) {
 
 var domainRe = regexp.MustCompile(`^(?i)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
 
+const (
+	stateDir        = "/root/.ssl-hub"
+	zerosslKidPath  = stateDir + "/zerossl_kid"
+	zerosslHmacPath = stateDir + "/zerossl_hmac"
+)
+
+func ensureStateDir() error {
+	return os.MkdirAll(stateDir, 0o700)
+}
+
+func saveEAB(kid, hmac string) error {
+	if err := ensureStateDir(); err != nil {
+		return err
+	}
+	if err := os.WriteFile(zerosslKidPath, []byte(kid+"\n"), 0o600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(zerosslHmacPath, []byte(hmac+"\n"), 0o600); err != nil {
+		return err
+	}
+	return nil
+}
+
+func loadEAB() (string, string, error) {
+	kid, err := os.ReadFile(zerosslKidPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+	hmac, err := os.ReadFile(zerosslHmacPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+	return strings.TrimSpace(string(kid)), strings.TrimSpace(string(hmac)), nil
+}
+
+func maskSecret(s string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	if len(s) <= 4 {
+		return strings.Repeat("•", len(s))
+	}
+	return strings.Repeat("•", len(s)-4) + s[len(s)-4:]
+}
+
 func safeRun(cmd string, args ...string) (string, error) {
 	c := exec.Command(cmd, args...)
 	c.Env = os.Environ() // inherit PATH etc.; wrapper script controls sensitive env
@@ -85,7 +136,7 @@ func main() {
 	h(`<style>body{font-family:system-ui,Segoe UI,Arial;margin:24px}nav a{margin-right:12px}</style>`)
 	h(`<h2>SSL Hub</h2><nav>` +
 		`<a href="?tab=autossl">AutoSSL (Let’s Encrypt)</a>` +
-		`<a href="?tab=zerossl">ZeroSSL (ACME)</a>` +
+		`<a href="?tab=zerossl">ZeroSSL AutoSSL</a>` +
 		`</nav><hr/>`)
 
 	if !gate() {
@@ -103,8 +154,7 @@ func main() {
 		}
 		out, err := safeRun("/usr/local/cpanel/bin/whmapi1", "set_autossl_provider", "provider=LetsEncrypt", "x_terms_of_service_accepted=https://letsencrypt.org/documents/LE-SA-v1.4-April-3-2024.pdf")
 		if err != nil {
-			h(`<pre>ERROR:
-` + esc(out) + `</pre>`)
+			h(`<pre>ERROR:\n` + esc(out) + `</pre>`)
 			return
 		}
 		h(`<pre>` + esc(out) + `</pre>`)
@@ -112,28 +162,59 @@ func main() {
 	case "autossl_run_all":
 		out, err := safeRun("/usr/local/cpanel/bin/autossl_check", "--all")
 		if err != nil {
-			h(`<pre>ERROR:
-` + esc(out) + `</pre>`)
+			h(`<pre>ERROR:\n` + esc(out) + `</pre>`)
 			return
 		}
 		h(`<pre>` + esc(out) + `</pre>`)
 		return
-	case "zerossl_issue":
-		domain := strings.TrimSpace(form.Get("domain"))
+	case "zerossl_save_eab":
 		kid := strings.TrimSpace(form.Get("eab_kid"))
 		hmac := strings.TrimSpace(form.Get("eab_hmac"))
+		if len(kid) == 0 || len(hmac) == 0 {
+			h(`<p>Please provide both the ZeroSSL External Account Binding KID and HMAC.</p>`)
+			return
+		}
+		if err := saveEAB(kid, hmac); err != nil {
+			h(`<pre>ERROR:\n` + esc(err.Error()) + `</pre>`)
+			return
+		}
+		h(`<p>Saved ZeroSSL External Account Binding credentials securely for future runs.</p>`)
+		return
+	case "zerossl_issue":
+		domain := strings.TrimSpace(form.Get("domain"))
 		if !domainRe.MatchString(domain) {
 			h(`<p>Invalid domain.</p>`)
 			return
 		}
-		if len(kid) == 0 || len(hmac) == 0 {
-			h(`<p>EAB KID/HMAC required.</p>`)
+		kid, hmac, err := loadEAB()
+		if err != nil {
+			h(`<pre>ERROR:\n` + esc(err.Error()) + `</pre>`)
 			return
 		}
-		out, err := safeRun("/usr/local/cpanel/whostmgr/docroot/cgi/ssl-hub/zerossl.sh", domain, kid, hmac)
+		if len(kid) == 0 || len(hmac) == 0 {
+			h(`<p>Please save your ZeroSSL EAB credentials before issuing certificates.</p>`)
+			return
+		}
+		out, err := safeRun("/usr/local/cpanel/whostmgr/docroot/cgi/ssl-hub/zerossl.sh", domain)
 		if err != nil {
-			h(`<pre>ERROR:
-` + esc(out) + `</pre>`)
+			h(`<pre>ERROR:\n` + esc(out) + `</pre>`)
+			return
+		}
+		h(`<pre>` + esc(out) + `</pre>`)
+		return
+	case "zerossl_run_all":
+		kid, hmac, err := loadEAB()
+		if err != nil {
+			h(`<pre>ERROR:\n` + esc(err.Error()) + `</pre>`)
+			return
+		}
+		if len(kid) == 0 || len(hmac) == 0 {
+			h(`<p>Please save your ZeroSSL EAB credentials before running AutoSSL.</p>`)
+			return
+		}
+		out, err := safeRun("/usr/local/cpanel/whostmgr/docroot/cgi/ssl-hub/zerossl.sh", "--run-all")
+		if err != nil {
+			h(`<pre>ERROR:\n` + esc(out) + `</pre>`)
 			return
 		}
 		h(`<pre>` + esc(out) + `</pre>`)
@@ -141,17 +222,34 @@ func main() {
 	}
 	// Render tabs
 	if tab == "zerossl" {
-		h(`<h3>ZeroSSL (ACME via DNS‑01)</h3>`)
+		kid, hmac, err := loadEAB()
+		h(`<h3>ZeroSSL AutoSSL</h3>`)
+		if err != nil {
+			h(`<p style="color:#c00">Unable to read stored credentials: ` + esc(err.Error()) + `</p>`)
+		} else if len(kid) > 0 && len(hmac) > 0 {
+			h(`<p>Stored ZeroSSL EAB KID: ` + esc(maskSecret(kid)) + ` &mdash; HMAC: ` + esc(maskSecret(hmac)) + `.</p>`)
+		} else {
+			h(`<p>No ZeroSSL External Account Binding credentials saved yet.</p>`)
+		}
 		h(`<form method="post"><div>` +
+			`<label>EAB KID:</label><br/><input name="eab_kid" autocomplete="off" required />` +
+			`</div><div style="margin-top:8px">` +
+			`<label>EAB HMAC:</label><br/><input name="eab_hmac" autocomplete="off" required />` +
+			`</div>` +
+			`<input type="hidden" name="action" value="zerossl_save_eab"/>` +
+			`<div style="margin-top:12px"><button>Save ZeroSSL credentials</button></div>` +
+			`</form>`)
+		h(`<form method="post" style="margin-top:16px">` +
+			`<input type="hidden" name="action" value="zerossl_run_all"/>` +
+			`<button>Run ZeroSSL AutoSSL for all cPanel accounts</button>` +
+			`</form>`)
+		h(`<form method="post" style="margin-top:16px"><div>` +
 			`<label>Primary domain (wildcard included):</label><br/>` +
 			`<input name="domain" placeholder="example.com" required />` +
-			`</div><div style="margin-top:8px">` +
-			`<label>EAB KID:</label><br/><input name="eab_kid" required />` +
-			`</div><div style="margin-top:8px">` +
-			`<label>EAB HMAC:</label><br/><input name="eab_hmac" required />` +
 			`</div>` +
 			`<input type="hidden" name="action" value="zerossl_issue"/>` +
-			`<div style="margin-top:12px"><button>Issue & Install</button></div>` +
+			`<div style="margin-top:12px"><button>Issue & Install for this domain</button></div>` +
+			`<p style="font-size:12px;color:#555">The script will automatically include *.domain for wildcard coverage.</p>` +
 			`</form>`)
 		return
 	}
