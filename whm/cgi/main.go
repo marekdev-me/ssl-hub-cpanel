@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/http/cgi"
@@ -39,7 +40,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		Tab:          tab,
 		BodyTemplate: "autossl", // default
 	}
-
 	if tab == "zerossl" {
 		data.BodyTemplate = "zerossl"
 	}
@@ -91,7 +91,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tpl.ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, err.Error(), 500)
+		// dev-friendly: show the template error instead of a blank 500
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "<pre>TEMPLATE ERROR:\n%s</pre>", template.HTMLEscapeString(err.Error()))
 	}
 }
 
