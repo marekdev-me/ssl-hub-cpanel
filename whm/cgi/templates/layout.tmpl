@@ -1,0 +1,20 @@
+{{define "layout"}}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SSL Hub</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:24px}
+    nav a{margin-right:12px}
+    pre{white-space:pre-wrap}
+    .btn{display:inline-block;padding:.5rem .75rem;border:1px solid #ddd;border-radius:.375rem}
+  </style>
+</head>
+<body>
+  {{template "navbar" .}}
+  <hr/>
+  {{template "content" .}}
+</body>
+</html>
+{{end}}

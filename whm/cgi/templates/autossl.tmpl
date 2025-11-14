@@ -1,0 +1,18 @@
+{{define "content"}}
+<h2>AutoSSL (Let’s Encrypt)</h2>
+<form method="post" style="margin-bottom:12px">
+  <label><input type="checkbox" name="tos"> I agree to the Let’s Encrypt Terms of Service</label>
+  <input type="hidden" name="action" value="autossl_enable_le">
+  <div style="margin-top:8px"><button class="btn">Enable Let’s Encrypt provider</button></div>
+</form>
+
+<form method="post">
+  <input type="hidden" name="action" value="autossl_run_all">
+  <button class="btn">Run AutoSSL for all users</button>
+</form>
+
+{{if .Output}}
+  <h3>Result</h3>
+  <pre>{{.Output}}</pre>
+{{end}}
+{{end}}

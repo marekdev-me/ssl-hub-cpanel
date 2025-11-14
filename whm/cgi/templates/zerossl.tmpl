@@ -1,0 +1,22 @@
+{{define "content"}}
+<h2>ZeroSSL (ACME via DNS-01)</h2>
+<form method="post">
+  <div>
+    <label>Primary domain:</label><br>
+    <input name="domain" placeholder="example.com" required>
+  </div>
+  <div style="margin-top:8px">
+    <label>EAB KID:</label><br><input name="eab_kid" required>
+  </div>
+  <div style="margin-top:8px">
+    <label>EAB HMAC:</label><br><input name="eab_hmac" required>
+  </div>
+  <input type="hidden" name="action" value="zerossl_issue">
+  <div style="margin-top:12px"><button class="btn">Issue & Install</button></div>
+</form>
+
+{{if .Output}}
+  <h3>Result</h3>
+  <pre>{{.Output}}</pre>
+{{end}}
+{{end}}
