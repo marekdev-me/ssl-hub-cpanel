@@ -18,8 +18,9 @@ var (
 )
 
 type PageData struct {
-	Tab    string
-	Output string
+	Tab          string
+	BodyTemplate string
+	Output       string
 }
 
 func run(cmd string, args ...string) (string, error) {
@@ -28,24 +29,22 @@ func run(cmd string, args ...string) (string, error) {
 	return string(out), err
 }
 
-func render(w http.ResponseWriter, name string, data PageData) {
-	// We always execute "layout", which includes {{template "content" .}} from the page template
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// Ensure the page template is defined as "content" before executing layout
-	if err := tpl.ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, err.Error(), 500)
-	}
-}
-
 func handler(w http.ResponseWriter, r *http.Request) {
 	tab := r.URL.Query().Get("tab")
 	if tab == "" {
 		tab = "autossl"
 	}
-	data := PageData{Tab: tab}
 
-	switch r.Method {
-	case "POST":
+	data := PageData{
+		Tab:          tab,
+		BodyTemplate: "autossl", // default
+	}
+
+	if tab == "zerossl" {
+		data.BodyTemplate = "zerossl"
+	}
+
+	if r.Method == http.MethodPost {
 		switch r.FormValue("action") {
 		case "autossl_enable_le":
 			if r.FormValue("tos") != "on" {
@@ -90,19 +89,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	switch tab {
-	case "zerossl":
-		_ = tpl.ExecuteTemplate(w, "layout", struct {
-			PageData
-		}{data})
-	default:
-		_ = tpl.ExecuteTemplate(w, "layout", struct {
-			PageData
-		}{data})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tpl.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, err.Error(), 500)
 	}
 }
 
 func main() {
-	// Run as a CGI http.Handler — WHM’s cpsrvd will invoke this binary
 	_ = cgi.Serve(http.HandlerFunc(handler))
 }

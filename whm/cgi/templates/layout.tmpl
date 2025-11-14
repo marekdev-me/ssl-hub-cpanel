@@ -14,7 +14,8 @@
 <body>
   {{template "navbar" .}}
   <hr/>
-  {{template "content" .}}
+  {{/* This is the important line: */}}
+  {{template .BodyTemplate .}}
 </body>
 </html>
 {{end}}
